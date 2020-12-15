@@ -251,7 +251,13 @@ impl Module {
         Ok(Self::from_artifact(store, artifact))
     }
 
-    fn from_artifact(store: &Store, artifact: Arc<dyn Artifact>) -> Self {
+    /// Creates a module from an [`Artifact`] and a [`Store`].
+    ///
+    /// This API is hidden because it's not necessarily stable;
+    /// this functionality is required for some core functionality though, like
+    /// building in-memory module caches.
+    #[doc(hidden)]
+    pub fn from_artifact(store: &Store, artifact: Arc<dyn Artifact>) -> Self {
         Self {
             store: store.clone(),
             artifact,
