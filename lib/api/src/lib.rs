@@ -311,8 +311,8 @@ pub use wasmer_compiler::{
     CompileError, CpuFeature, Features, ParseCpuFeatureError, Target, WasmError, WasmResult,
 };
 pub use wasmer_engine::{
-    ChainableNamedResolver, DeserializeError, Engine, Export, FrameInfo, LinkError, NamedResolver,
-    NamedResolverChain, Resolver, RuntimeError, SerializeError, Tunables,
+    Artifact, ChainableNamedResolver, DeserializeError, Engine, Export, FrameInfo, LinkError,
+    NamedResolver, NamedResolverChain, Resolver, RuntimeError, SerializeError, Tunables,
 };
 pub use wasmer_types::{
     Atomically, Bytes, ExportIndex, GlobalInit, LocalFunctionIndex, MemoryView, Pages, ValueType,
