@@ -65,6 +65,8 @@ impl<F: Fn(&Operator) -> u64 + Copy + Clone + Send + Sync> fmt::Debug for Meteri
     }
 }
 
+const REMAINING_POINTS_NAME: &str = "remaining_points";
+
 impl<F: Fn(&Operator) -> u64 + Copy + Clone + Send + Sync + 'static> ModuleMiddleware
     for Metering<F>
 {
@@ -206,7 +208,9 @@ mod tests {
     use super::*;
 
     use std::sync::Arc;
-    use wasmer::{imports, wat2wasm, CompilerConfig, Cranelift, Module, Store, JIT};
+    use wasmer::{
+        imports, wat2wasm, CompilerConfig, Cranelift, ExportType, ExternType, Module, Store, JIT,
+    };
 
     fn cost_function(operator: &Operator) -> u64 {
         match operator {
@@ -230,6 +234,49 @@ mod tests {
         )
         .unwrap()
         .into()
+    }
+
+    #[test]
+    fn metering_overrides_export_name() {
+        let wasm =
+            wat2wasm(br#"(module (global $rp (export "remaining_points") f32 (f32.const 1)))"#)
+                .unwrap();
+
+        // no metering ()
+        {
+            let compiler_config = Cranelift::default();
+            let store = Store::new(&JIT::new(compiler_config).engine());
+            let module = Module::new(&store, &wasm).unwrap();
+            let exports: Vec<ExportType> = module.exports().collect();
+            assert_eq!(exports.len(), 1);
+            assert_eq!(exports[0].name(), REMAINING_POINTS_NAME);
+            match exports[0].ty() {
+                ExternType::Global(GlobalType {
+                    ty: Type::F32,
+                    mutability: Mutability::Const,
+                }) => {}
+                ex => panic!("Unexpected export type: {:?}", ex),
+            }
+        }
+
+        // with metering
+        {
+            let metering = Arc::new(Metering::new(10, cost_function));
+            let mut compiler_config = Cranelift::default();
+            compiler_config.push_middleware(metering.clone());
+            let store = Store::new(&JIT::new(compiler_config).engine());
+            let module = Module::new(&store, &wasm).unwrap();
+            let exports: Vec<ExportType> = module.exports().collect();
+            assert_eq!(exports.len(), 1);
+            assert_eq!(exports[0].name(), REMAINING_POINTS_NAME);
+            match exports[0].ty() {
+                ExternType::Global(GlobalType {
+                    ty: Type::I64,
+                    mutability: Mutability::Var,
+                }) => {}
+                ex => panic!("Unexpected export type: {:?}", ex),
+            }
+        }
     }
 
     #[test]
