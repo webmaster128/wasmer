@@ -42,30 +42,32 @@
 //! cargo run --example engine-headless --release --features "cranelift"
 //! ```
 //!
+//! Or
+//!
+//! ```sh
+//! cargo build --example engine-headless --release --features "cranelift"
+//! codesign -s - -v -f --entitlements debug.plist ./target/release/examples/engine-headless
+//! xcrun xctrace record --template 'Allocations' --launch ./target/release/examples/engine-headless
+//! open -a Instruments Launch_engine-headless_*.trace
+//! ```
+//!
 //! Ready?
 
 use tempfile::NamedTempFile;
-use wasmer::{imports, wat2wasm, EngineBuilder, Instance, Module, Store, Value};
+use wasmer::{imports, Engine, Function, Instance, Module, NativeEngineExt, Store};
 use wasmer_compiler_cranelift::Cranelift;
 
+const WASM: &[u8] = include_bytes!("nois_drand.wasm");
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Sleep a bit to allow starting profiling tools
+    println!("Sleeping...");
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    println!("Done sleeping.");
+
     // First step, let's compile the Wasm module and serialize it.
     // Note: we need a compiler here.
     let serialized_module_file = {
-        // Let's declare the Wasm module with the text representation.
-        let wasm_bytes = wat2wasm(
-            r#"
-(module
-  (type $sum_t (func (param i32 i32) (result i32)))
-  (func $sum_f (type $sum_t) (param $x i32) (param $y i32) (result i32)
-    local.get $x
-    local.get $y
-    i32.add)
-  (export "sum" (func $sum_f)))
-"#
-            .as_bytes(),
-        )?;
-
         // Define a compiler configuration.
         //
         // In this situation, the compiler is
@@ -78,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("Compiling module...");
         // Let's compile the Wasm module.
-        let module = Module::new(&store, wasm_bytes)?;
+        let module = Module::new(&store, WASM)?;
 
         println!("Serializing module...");
         // Here we go. Let's serialize the compiled Wasm module in a
@@ -89,42 +91,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         serialized_module_file
     };
 
+    // We create a headless Universal engine.
+    let runtime_engine = Engine::headless();
+
     // Second step, deserialize the compiled Wasm module, and execute
     // it, for example with Wasmer without a compiler.
-    {
-        println!("Creating headless Universal engine...");
-        // We create a headless Universal engine.
-        let engine = EngineBuilder::headless();
-        let mut store = Store::new(engine);
+    for i in 1..=10_000 {
+        println!("Creating headless Universal engine {i}...");
+        let mut store = Store::new(runtime_engine.clone());
 
-        println!("Deserializing module...");
+        // println!("Deserializing module...");
         // Here we go.
         //
         // Deserialize the compiled Wasm module. This code is unsafe
         // because Wasmer can't assert the bytes are valid (see the
         // `wasmer::Module::deserialize`'s documentation to learn
         // more).
-        let module = unsafe { Module::deserialize_from_file(&store, serialized_module_file) }?;
+        let module =
+            unsafe { Module::deserialize_from_file(&store, serialized_module_file.path()) }?;
 
         // Congrats, the Wasm module has been deserialized! Now let's
         // execute it for the sake of having a complete example.
 
         // Create an import object. Since our Wasm module didn't declare
         // any imports, it's an empty object.
-        let import_object = imports! {};
+        let import_object = imports! {
+            "env" => {
+                "db_read" => Function::new_typed(&mut store, |_a: u32| -> u32 { 0 }),
+                "db_write" => Function::new_typed(&mut store, |_a: u32, _b: u32| {}),
+                "db_remove" => Function::new_typed(&mut store, |_a: u32| {}),
+                "db_scan" => Function::new_typed(&mut store, |_a: u32, _b: u32, _c: i32| -> u32 { 0 }),
+                "db_next" => Function::new_typed(&mut store, |_a: u32| -> u32 { 0 }),
+                "db_next_key" => Function::new_typed(&mut store, |_a: u32| -> u32 { 0 }),
+                "db_next_value" => Function::new_typed(&mut store, |_a: u32| -> u32 { 0 }),
+                "query_chain" => Function::new_typed(&mut store, |_a: u32| -> u32 { 0 }),
+                "addr_validate" => Function::new_typed(&mut store, |_a: u32| -> u32 { 0 }),
+                "addr_canonicalize" => Function::new_typed(&mut store, |_a: u32, _b: u32| -> u32 { 0 }),
+                "addr_humanize" => Function::new_typed(&mut store, |_a: u32, _b: u32| -> u32 { 0 }),
+                "secp256k1_verify" => Function::new_typed(&mut store, |_a: u32, _b: u32, _c: u32| -> u32 { 0 }),
+                "secp256k1_recover_pubkey" => Function::new_typed(&mut store, |_a: u32, _b: u32, _c: u32| -> u64 { 0 }),
+                "ed25519_verify" => Function::new_typed(&mut store, |_a: u32, _b: u32, _c: u32| -> u32 { 0 }),
+                "ed25519_batch_verify" => Function::new_typed(&mut store, |_a: u32, _b: u32, _c: u32| -> u32 { 0 }),
+                "debug" => Function::new_typed(&mut store, |_a: u32| {}),
+                "abort" => Function::new_typed(&mut store, |_a: u32| {}),
+            },
+        };
 
-        println!("Instantiating module...");
+        // println!("Instantiating module...");
         // Let's instantiate the Wasm module.
-        let instance = Instance::new(&mut store, &module, &import_object)?;
+        let _instance = Instance::new(&mut store, &module, &import_object)?;
 
-        println!("Calling `sum` function...");
-        // The Wasm module exports a function called `sum`.
-        let sum = instance.exports.get_function("sum")?;
-        let results = sum.call(&mut store, &[Value::I32(1), Value::I32(2)])?;
-
-        println!("Results: {:?}", results);
-        assert_eq!(results.to_vec(), vec![Value::I32(3)]);
+        // drop module, artifact should disappear
     }
+
+    std::mem::drop(runtime_engine);
+
+    // Show memory is good now
+    println!("Sleeping...");
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    println!("Done sleeping.");
 
     Ok(())
 }
