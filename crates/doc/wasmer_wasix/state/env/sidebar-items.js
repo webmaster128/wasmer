@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BRANCHES","CLEANUP_TIMEOUT"],"static":["META","__CALLSITE"],"struct":["WasiEnv","WasiEnvInit","WasiInstanceHandles"]};

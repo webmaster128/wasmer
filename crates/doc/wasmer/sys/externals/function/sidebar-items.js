@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["call_trampoline","func_wrapper"],"macro":["impl_host_function"],"struct":["DynamicFunction","Function","StaticFunction"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Cmd"],"fn":["is_binfmt_interpreter","print_version","wasmer_main","wasmer_main_inner"],"struct":["Args"]};

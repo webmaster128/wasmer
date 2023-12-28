@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["serde_imports"],"static":["NEXT_ID"],"struct":["ArchivableModuleInfo","ArchivableModuleInfoResolver","ArchivedArchivableModuleInfo","ArchivedImportKey","ArchivedModuleId","ExportsIterator","ImportKey","ImportKeyResolver","ImportsIterator","ModuleId","ModuleIdResolver","ModuleInfo"]};
