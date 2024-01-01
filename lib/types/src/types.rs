@@ -2,6 +2,7 @@ use crate::indexes::{FunctionIndex, GlobalIndex};
 use crate::lib::std::borrow::ToOwned;
 use crate::lib::std::fmt;
 use crate::lib::std::format;
+use crate::lib::std::rc::Rc;
 use crate::lib::std::string::{String, ToString};
 use crate::lib::std::vec::Vec;
 use crate::units::Pages;
@@ -233,33 +234,37 @@ impl ExternType {
     }
 }
 
-// TODO: `shrink_to_fit` these or change it to `Box<[Type]>` if not using
-// Cow or something else
 /// The signature of a function that is either implemented
 /// in a Wasm module or exposed to Wasm by the host.
 ///
 /// WebAssembly functions can have 0 or more parameters and results.
+///
+/// FunctionType is immutable and cheap to clone.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 #[derive(RkyvSerialize, RkyvDeserialize, Archive)]
 #[archive_attr(derive(CheckBytes))]
 pub struct FunctionType {
     /// The parameters of the function
-    params: Box<[Type]>,
+    params: Rc<[Type]>,
     /// The return values of the function
-    results: Box<[Type]>,
+    results: Rc<[Type]>,
 }
 
 impl FunctionType {
     /// Creates a new Function Type with the given parameter and return types.
     pub fn new<Params, Returns>(params: Params, returns: Returns) -> Self
     where
+        // We might want Into<Rc<[Type]>> here at some point but this is breaking
+        // and not necessarily convenient to use.
         Params: Into<Box<[Type]>>,
         Returns: Into<Box<[Type]>>,
     {
+        let boxed_params = params.into();
+        let boxed_returns = returns.into();
         Self {
-            params: params.into(),
-            results: returns.into(),
+            params: boxed_params.into(),
+            results: boxed_returns.into(),
         }
     }
 
@@ -638,5 +643,20 @@ mod tests {
         let ty: FunctionType = NINE_V128_TO_NINE_I32.into();
         assert_eq!(ty.params().len(), 9);
         assert_eq!(ty.results().len(), 9);
+    }
+
+    #[test]
+    fn functiontype_clone_works() {
+        let original: FunctionType = NINE_V128_TO_NINE_I32.into();
+        let cloned = original.clone();
+        assert_eq!(cloned, original);
+
+        // Ensure no second allocation was created
+        let params_ptr_1 = original.params.as_ptr();
+        let results_ptr_1 = original.results.as_ptr();
+        let params_ptr_2 = cloned.params.as_ptr();
+        let results_ptr_2 = cloned.results.as_ptr();
+        assert_eq!(params_ptr_1, params_ptr_2);
+        assert_eq!(results_ptr_1, results_ptr_2);
     }
 }
